@@ -2,7 +2,12 @@
   (:gen-class)
   (:require [clj-http.client :as client]
             [clojure.edn]
-            [clojure.java.jdbc :as sql]))
+            [clojure.java.jdbc :as sql]
+            [clj-time.core :as t]
+            [clj-time.format :as f])
+  (:import (java.util TimeZone)))
+
+  (TimeZone/setDefault (TimeZone/getTimeZone "GMT"))
 
 (def config
   (let [config (clojure.edn/read-string (slurp "config.edn"))
@@ -32,10 +37,10 @@
    :as :json})
 
 (def api 
-  {:article "/api/v0/article/"
-   :learning-tracks "/api/v0/learningtrack/"
-   :track-article "/api/v0/trackarticle/"
-   :tag "/api/v0/tag/"})
+  {:article "/backoffice/api/v0/article/"
+   :learning-track "/backoffice/api/v0/learningtrack/"
+   :track-article "/backoffice/api/v0/trackarticle/"
+   :tag "/backoffice/api/v0/tag/"})
 
 (def article
   {:id  :id
@@ -51,6 +56,12 @@
       (concat fin (first list))
       (recur (rest list) (concat fin (first list))))))
 
+(defn create-url [title]
+  (->> title 
+       (re-seq #"[a-zA-Z0-9]+")
+       (interpose "_")
+       (apply str)))
+
 (defn get-api [api] 
   (:body (client/get (str (:base-url config) api)
                      headers)))
@@ -63,120 +74,68 @@
       (recur (get-api(:next (:meta body)))
              (concat content (:objects body))))))
 
-(defn article-mapping [get-api-content-article]
-  (let [{:keys [created_datetime
-                free_text
-                id
-                last_modified_datetime
-                old_created_by
-                old_date_created
-                old_id
-                premium_text
-                resource_uri
-                tags
-                title]} get-api-content-article]
-    {:created_datetime created_datetime
-     :free_text free_text
-     :id id
-     :last_modified_datetime last_modified_datetime
-     :old_created_by old_created_by
-     :old_date_created old_date_created
-     :old_id old_id
-     :premium_text premium_text
-     :resource_uri resource_uri
-     :tags tags
-     :title title}))
+(defn time-format [time]
+  (let [time (first (clojure.string/split time #"\."))]
+    (c/to-sql-time (f/parse (f/formatters :date-hour-minute-second) time))))
 
-(defn learning-track-mapping [get-api-content-learning-track]
-  (let [{:keys [created_datetime
-                description
-                id
-                last_modified_datetime
-                order
-                privilege
-                publicity
-                resource_uri
-                tags
-                title]} get-api-content-learning-track]
-    {:created_datetime created_datetime
-     :description description
-     :id id
-     :last_modified_datetime last_modified_datetime
-     :order order
-     :privilege privilege
-     :publicity publicity
-     :resource_uri resource_uri
-     :tags tags
-     :title title}))
-
-(defn track-article-mapping [get-api-content-track-article]
-  (let [{:keys [created_datetime
-                free_text
-                id
-                last_modified_datetime
-                learning-track
-                order
-                premium_text
-                privilege
-                publicity
-                resource_uri
-                tags
-                title]} get-api-content-track-article]
-    {:created_datetime created_datetime
-     :free_text free_text
-     :description description
-     :id id
-     :last_modified_datetime last_modified_datetime
-     :order order
-     :premium_text premium_text
-     :privilege privilege
-     :publicity publicity
-     :resource_uri resource_uri
-     :tags tags
-     :title title}))
-
-(defn tag-mapping [get-api-content-tag]
-  (let [{:keys [id
-                 name
-                 resource_uri
-                 slug]} get-api-content-tag]
-    {:id id
-     :name name
-     :resource_uri resource_uri
-     :slug slug}))
-
-(defn insert-article [title id free_text text_premium
-                      created_datetime old_created_by
-                      url privilege publicity]
+(defn insert-article [article-map]
   (sql/insert! db :article
-               {:title title
-                :id id
-                :text_free free_text
-                :text_premium premium_text
-                :created_date created_datetime
-                :created_by old_created_by
-                :url url
-                :privilege privilege
-                :publicity publicity}))
+               {:title (:title article-map)
+                :id (:id article-map)
+                :old_id (:old_id article-map)
+                :url (create-url (:title article-map))
+                :text_free (:free_text article-map)
+                :text_premium (:premium_text article-map)
+                :created_by (:old_created_by article-map)
+                :created_datetime (time-format(:created_datetime article-map))
+                :last_modified_datetime (time-format(:last_modified_datetime article-map))
+                :privilege (:privilege article-map)
+                :publicity (:publicity article-map)}))
 
-(defn insert-learning-track [id name description order privilege publicity]
+(defn insert-article-tag [article-map]
+  (map #(sql/insert! db :article_tag
+               {:article_id (:id article-map)
+                :tag_id (:id %)}) (:tags article-map)))
+
+(defn article-finale [article-api]
+  (map #(do (insert-article %) 
+            (insert-article-tag %)) article-api))
+
+(defn insert-learning-track [lt-map]
   (sql/insert! db :learning_track
-               {:track_id id
-                :track_name name
-                :description description
-                :order order
-                :privilege privilege
-                :publicity publicity}))
+               {:id (:id lt-map)
+                :name (:title lt-map)
+                :description (:description lt-map)
+                :url (create-url(:title lt-map))
+                :created_datetime (time-format(:created_datetime lt-map))
+                :last_modified_datetime (time-format(:last_modified_datetime lt-map))
+                :learning_track_order (:order lt-map)
+                :privilege (:privilege lt-map)
+                :publicity (:publicity lt-map)}))
 
+(defn insert-learning-track-tag [lt-map]
+  (map #(sql/insert! db :learning_track_tag
+               {:learning_track_id (:id lt-map)
+                :tag_id (:id %)}) (:tags lt-map)))
 
-(defn insert-tag [tag-mapping]
+(defn learning-track-finale [lt-api]
+  (map #(do (insert-learning-track %) 
+            (insert-learning-track-tag %)) lt-api))
+
+(defn insert-tag [tag-map]
   (sql/insert! db :tag
-               {:tag_id (:id tag-mapping)
-                :tag_type (:name tag-mapping)}))
+               {:tag_id (:id tag-map)
+                :tag_type (:name tag-map)
+                :tag_url (:slug tag-map)}))
 
-(defn finale []
-  (map #(insert-tag )))
+(defn tag-finale [tag-api]
+  (map #(insert-tag %) tag-api))
 
+(defn insert-tanggalan [tanggal]
+  (sql/insert! db :tanggalan
+               {:tanggal tanggal}))
+
+(defn del-all-rows [])
 
 (defn -main
   "I don't do a whole lot ... yet."
