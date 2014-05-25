@@ -4,7 +4,8 @@
             [clojure.edn]
             [clojure.java.jdbc :as sql]
             [clj-time.core :as t]
-            [clj-time.format :as f])
+            [clj-time.format :as f]
+            [clj-time.coerce :as c])
   (:import (java.util TimeZone)))
 
   (TimeZone/setDefault (TimeZone/getTimeZone "GMT"))
@@ -84,8 +85,8 @@
                 :id (:id article-map)
                 :old_id (:old_id article-map)
                 :url (create-url (:title article-map))
-                :text_free (:free_text article-map)
-                :text_premium (:premium_text article-map)
+                :free_text (:free_text article-map)
+                :premium_text (:premium_text article-map)
                 :created_by (:old_created_by article-map)
                 :created_datetime (time-format(:created_datetime article-map))
                 :last_modified_datetime (time-format(:last_modified_datetime article-map))
@@ -104,7 +105,7 @@
 (defn insert-learning-track [lt-map]
   (sql/insert! db :learning_track
                {:id (:id lt-map)
-                :name (:title lt-map)
+                :title (:title lt-map)
                 :description (:description lt-map)
                 :url (create-url(:title lt-map))
                 :created_datetime (time-format(:created_datetime lt-map))
@@ -121,6 +122,30 @@
 (defn learning-track-finale [lt-api]
   (map #(do (insert-learning-track %) 
             (insert-learning-track-tag %)) lt-api))
+
+(defn insert-track-article [ta-map]
+  (let [lt (get-api (:learning_track ta-map))]
+    (sql/insert! db :track_article
+                 {:id (:id ta-map)
+                  :title (:title ta-map)
+                  :url (create-url(:title ta-map))
+                  :article_order (:order ta-map)
+                  :created_datetime (time-format (:created_datetime ta-map))
+                  :last_modified_datetime (time-format (:last_modified_datetime ta-map))
+                  :free_text (:free_text ta-map)
+                  :premium_text (:premium_text ta-map)
+                  :privilege (:privilege ta-map)
+                  :publicity (:publicity ta-map)
+                  :track_id (:id lt)})))
+
+(defn insert-track-article-tag [ta-map]
+  (map #(sql/insert! db :track_article_tag
+               {:track_article_id (:id ta-map)
+                :tag_id (:id %)}) (:tags ta-map)))
+
+(defn track-article-finale [ta-api]
+  (map #(do (insert-track-article %) 
+            (insert-track-article-tag %)) ta-api))
 
 (defn insert-tag [tag-map]
   (sql/insert! db :tag
