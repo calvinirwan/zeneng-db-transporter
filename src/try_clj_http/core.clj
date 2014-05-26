@@ -149,9 +149,9 @@
 
 (defn insert-tag [tag-map]
   (sql/insert! db :tag
-               {:tag_id (:id tag-map)
-                :tag_type (:name tag-map)
-                :tag_url (:slug tag-map)}))
+               {:id (:id tag-map)
+                :type (:name tag-map)
+                :url (:slug tag-map)}))
 
 (defn tag-finale [tag-api]
   (map #(insert-tag %) tag-api))
