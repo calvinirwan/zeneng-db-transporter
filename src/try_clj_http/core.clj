@@ -67,13 +67,14 @@
   (:body (client/get (str (:base-url config) api)
                      headers)))
 
-(defn get-api-all-content [get-api-fn]
+(defn get-api-all-content [api]
+  (let [get-api-fn (get-api api)]
   (loop [body get-api-fn
          content '()]
     (if (nil? (:next (:meta body)))
       (concat content (:objects body))
       (recur (get-api(:next (:meta body)))
-             (concat content (:objects body))))))
+             (concat content (:objects body)))))))
 
 (defn time-format [time]
   (let [time (first (clojure.string/split time #"\."))]
@@ -98,9 +99,10 @@
                {:article_id (:id article-map)
                 :tag_id (:id %)}) (:tags article-map)))
 
-(defn article-finale [article-api]
-  (map #(do (insert-article %) 
-            (insert-article-tag %)) article-api))
+(defn article-finale [api]
+  (let [article-api (get-api-all-content api)]
+    (map #(do (insert-article %) 
+              (insert-article-tag %)) article-api)))
 
 (defn insert-learning-track [lt-map]
   (sql/insert! db :learning_track
@@ -119,9 +121,10 @@
                {:learning_track_id (:id lt-map)
                 :tag_id (:id %)}) (:tags lt-map)))
 
-(defn learning-track-finale [lt-api]
-  (map #(do (insert-learning-track %) 
-            (insert-learning-track-tag %)) lt-api))
+(defn learning-track-finale [api]
+  (let [lt-api (get-api-all-content api)]
+    (map #(do (insert-learning-track %) 
+              (insert-learning-track-tag %)) lt-api)))
 
 (defn insert-track-article [ta-map]
   (let [lt (get-api (:learning_track ta-map))]
@@ -143,9 +146,10 @@
                {:track_article_id (:id ta-map)
                 :tag_id (:id %)}) (:tags ta-map)))
 
-(defn track-article-finale [ta-api]
-  (map #(do (insert-track-article %) 
-            (insert-track-article-tag %)) ta-api))
+(defn track-article-finale [api]
+  (let [ta-api (get-api-all-content api)]
+    (map #(do (insert-track-article %) 
+              (insert-track-article-tag %)) ta-api)))
 
 (defn insert-tag [tag-map]
   (sql/insert! db :tag
@@ -153,8 +157,9 @@
                 :type (:name tag-map)
                 :url (:slug tag-map)}))
 
-(defn tag-finale [tag-api]
-  (map #(insert-tag %) tag-api))
+(defn tag-finale [api]
+  (let [tag-api (get-api-all-content api)]
+    (map #(insert-tag %) tag-api)))
 
 (defn insert-tanggalan [tanggal]
   (sql/insert! db :tanggalan
