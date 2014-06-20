@@ -165,7 +165,11 @@
   (sql/insert! db :tanggalan
                {:tanggal tanggal}))
 
-(defn del-all-rows [])
+(defn exec []
+  (do (tag-finale (:tag api))
+      (article-finale (:article api))
+      (learning-track-finale (:learning-track api))
+      (track-article-finale (:track-article api))))
 
 (defn -main
   "I don't do a whole lot ... yet."
