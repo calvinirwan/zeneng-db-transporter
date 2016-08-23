@@ -175,3 +175,10 @@
   "I don't do a whole lot ... yet."
   [& args]
   (println "Hello, World!"))
+
+;; (sql/delete! db :track_article_tag [])
+;; (sql/delete! db :track_article [])
+;; (sql/delete! db :learning_track_tag [])
+;; (sql/delete! db :learning_track [])
+;; (learning-track-finale (:learning-track api))
+;; (track-article-finale (:track-article api))
